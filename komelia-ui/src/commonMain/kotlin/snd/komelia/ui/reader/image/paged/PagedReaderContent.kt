@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType.Companion.KeyUp
@@ -22,6 +24,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import snd.komelia.image.ReaderImageResult
@@ -33,6 +37,7 @@ import snd.komelia.settings.model.PagedReadingDirection.LEFT_TO_RIGHT
 import snd.komelia.settings.model.PagedReadingDirection.RIGHT_TO_LEFT
 import snd.komelia.ui.reader.balloon.BalloonDetectionEffect
 import snd.komelia.ui.reader.balloon.BalloonOverlay
+import snd.komelia.ui.reader.balloon.ReadingDirection
 import snd.komelia.ui.reader.image.ScreenScaleState
 import snd.komelia.ui.reader.image.common.PagedReaderHelpDialog
 import snd.komelia.ui.reader.image.common.ReaderControlsOverlay
@@ -72,6 +77,10 @@ fun BoxScope.PagedReaderContent(
     val currentPageImage = pages.firstOrNull()?.let { page ->
         (page.imageResult as? ReaderImageResult.Success)?.image
     }
+
+    val currentDisplaySize = currentPageImage?.displaySize?.collectAsState()?.value
+    val currentSize = currentPageImage?.currentSize?.collectAsState()?.value
+    val pageDisplaySize = currentSize ?: currentDisplaySize ?: IntSize.Zero
     
     // Trigger balloon detection when page changes
     BalloonDetectionEffect(
@@ -80,11 +89,40 @@ fun BoxScope.PagedReaderContent(
     )
 
     val coroutineScope = rememberCoroutineScope()
+    val balloonsState = pagedReaderState.balloonsState
+    val balloonsEnabled = balloonsState.balloonsEnabled.collectAsState().value
+    val balloonsDetecting = balloonsState.isDetecting.collectAsState().value
+    val hasBalloons = balloonsState.balloons.collectAsState().value.isNotEmpty()
+    val balloonDirection = when (readingDirection) {
+        LEFT_TO_RIGHT -> ReadingDirection.LTR
+        RIGHT_TO_LEFT -> ReadingDirection.RTL
+    }
+    LaunchedEffect(pageDisplaySize, currentContainerSize) {
+        if (pageDisplaySize != IntSize.Zero) {
+            val offsetX = ((currentContainerSize.width - pageDisplaySize.width) / 2).coerceAtLeast(0)
+            val offsetY = ((currentContainerSize.height - pageDisplaySize.height) / 2).coerceAtLeast(0)
+            balloonsState.setPageDisplayLayout(pageDisplaySize, IntOffset(offsetX, offsetY))
+        }
+    }
+
     ReaderControlsOverlay(
         readingDirection = layoutDirection,
         onNexPageClick = pagedReaderState::nextPage,
         onPrevPageClick = pagedReaderState::previousPage,
         contentAreaSize = currentContainerSize,
+        onTap = { offset ->
+            if (!balloonsEnabled) {
+                return@ReaderControlsOverlay false
+            }
+            if (balloonsDetecting) {
+                return@ReaderControlsOverlay true
+            }
+            val handled = balloonsState.handleTap(offset, currentContainerSize, balloonDirection)
+            if (handled) {
+                return@ReaderControlsOverlay true
+            }
+            hasBalloons
+        },
         isSettingsMenuOpen = showSettingsMenu,
         onSettingsMenuToggle = { onShowSettingsMenuChange(!showSettingsMenu) },
         modifier = Modifier.onKeyEvent { event ->

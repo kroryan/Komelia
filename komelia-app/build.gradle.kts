@@ -130,6 +130,9 @@ android {
             pickFirsts += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
+    androidResources {
+        noCompress += "tflite"
+    }
     dependenciesInfo {
         if (androidVariant != AndroidVariant.PLAY) {
             includeInApk = false

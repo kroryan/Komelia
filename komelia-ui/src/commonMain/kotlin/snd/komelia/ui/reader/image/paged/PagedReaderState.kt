@@ -242,8 +242,15 @@ class PagedReaderState(
      * When balloons are enabled and present, navigates through balloons first
      */
     fun nextPage() {
-        if (balloonsState.balloonsEnabled.value && balloonsState.balloons.value.isNotEmpty()) {
-            balloonsState.nextBalloon()
+        if (balloonsState.balloonsEnabled.value) {
+            if (balloonsState.isDetecting.value) {
+                return
+            }
+            if (balloonsState.balloons.value.isNotEmpty()) {
+                balloonsState.nextBalloon()
+            } else {
+                actualNextPage()
+            }
         } else {
             actualNextPage()
         }
@@ -254,8 +261,15 @@ class PagedReaderState(
      * When balloons are enabled and present, navigates through balloons first
      */
     fun previousPage() {
-        if (balloonsState.balloonsEnabled.value && balloonsState.balloons.value.isNotEmpty()) {
-            balloonsState.previousBalloon()
+        if (balloonsState.balloonsEnabled.value) {
+            if (balloonsState.isDetecting.value) {
+                return
+            }
+            if (balloonsState.balloons.value.isNotEmpty()) {
+                balloonsState.previousBalloon()
+            } else {
+                actualPreviousPage()
+            }
         } else {
             actualPreviousPage()
         }

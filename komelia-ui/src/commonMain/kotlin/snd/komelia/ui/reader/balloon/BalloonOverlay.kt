@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,7 +32,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import kotlin.math.min
 
 /**
@@ -53,7 +56,14 @@ fun BoxScope.BalloonOverlay(
     val currentBalloon by balloonsState.currentBalloon.collectAsState()
     val currentIndex by balloonsState.currentBalloonIndex.collectAsState()
     val balloonCount = balloonsState.getBalloonCount()
+    val balloonsEnabled by balloonsState.balloonsEnabled.collectAsState()
+    val isDetecting by balloonsState.isDetecting.collectAsState()
+    val detectorAvailable by balloonsState.detectorAvailable.collectAsState()
+    val detectionError by balloonsState.lastDetectionError.collectAsState()
+    val modelInfo by balloonsState.modelInfo.collectAsState()
     val pageSize by balloonsState.pageSize.collectAsState()
+    val pageDisplaySize by balloonsState.pageDisplaySize.collectAsState()
+    val pageDisplayOffset by balloonsState.pageDisplayOffset.collectAsState()
 
     // Use passed image or state image
     val stateImage by balloonsState.balloonImage.collectAsState()
@@ -61,7 +71,7 @@ fun BoxScope.BalloonOverlay(
 
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopStart
     ) {
         val density = LocalDensity.current
         val screenWidthPx = constraints.maxWidth.toFloat()
@@ -69,7 +79,7 @@ fun BoxScope.BalloonOverlay(
 
         // Seeneva-style scale calculation
         // scaleXY is the additional scale factor (Seeneva uses 0.5dp from resources)
-        val baseScaleXY = with(density) { 48.dp.toPx() } // Equivalent to 0.5dp * density, adjusted for Compose
+        val baseScaleXY = with(density) { 0.5.dp.toPx() }
 
         AnimatedVisibility(
             visible = overlayVisible && currentBalloon != null && displayImage != null,
@@ -106,8 +116,32 @@ fun BoxScope.BalloonOverlay(
                     val targetWidthDp = with(density) { targetWidth.toDp() }
                     val targetHeightDp = with(density) { targetHeight.toDp() }
 
+                    val pageWidth = pageSize.width.toFloat().coerceAtLeast(1f)
+                    val pageHeight = pageSize.height.toFloat().coerceAtLeast(1f)
+                    val displayWidth = pageDisplaySize.width.toFloat().coerceAtLeast(1f)
+                    val displayHeight = pageDisplaySize.height.toFloat().coerceAtLeast(1f)
+                    val centerX = pageDisplayOffset.x + (balloon.rect.center.x / pageWidth) * displayWidth
+                    val centerY = pageDisplayOffset.y + (balloon.rect.center.y / pageHeight) * displayHeight
+
+                    val marginPx = with(density) { 8.dp.toPx() }
+                    val maxLeft = screenWidthPx - targetWidth - marginPx
+                    val maxTop = screenHeightPx - targetHeight - marginPx
+                    val desiredLeft = centerX - (targetWidth / 2f)
+                    val desiredTop = centerY - (targetHeight / 2f)
+                    val left = if (maxLeft >= marginPx) {
+                        desiredLeft.coerceIn(marginPx, maxLeft)
+                    } else {
+                        ((screenWidthPx - targetWidth) / 2f).coerceAtLeast(0f)
+                    }
+                    val top = if (maxTop >= marginPx) {
+                        desiredTop.coerceIn(marginPx, maxTop)
+                    } else {
+                        ((screenHeightPx - targetHeight) / 2f).coerceAtLeast(0f)
+                    }
+
                     Box(
                         modifier = Modifier
+                            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
                             .size(targetWidthDp, targetHeightDp)
                             .shadow(8.dp, RoundedCornerShape(8.dp))
                             .clip(RoundedCornerShape(8.dp))
@@ -145,6 +179,33 @@ fun BoxScope.BalloonOverlay(
                 )
             }
         }
+
+        // Detection status indicator (for debugging when logcat is unavailable)
+        if (balloonsEnabled) {
+            val statusText = when {
+                !detectorAvailable -> "Detector unavailable"
+                detectionError != null -> "Detector error"
+                isDetecting -> "Detecting balloons..."
+                balloonCount == 0 -> "No balloons detected"
+                else -> "Balloons: $balloonCount"
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = if (modelInfo.isNullOrBlank()) statusText else "$statusText\n$modelInfo",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -162,7 +223,7 @@ fun BoxScope.BalloonOverlay(
  * @param imageHeight Height of the cropped balloon image
  * @param screenWidth Available screen width
  * @param screenHeight Available screen height
- * @param scaleXY Additional scale factor (Seeneva uses ~48px on standard density)
+ * @param scaleXY Additional scale factor (Seeneva uses 0.5dp from resources)
  * @return Pair of (width, height) in pixels for display
  */
 private fun calculateBalloonDisplaySize(
@@ -181,8 +242,7 @@ private fun calculateBalloonDisplaySize(
     // Calculate the scale factor similar to Seeneva
     // Seeneva: resultScaleXY = minScale + scaleXY
     // Here minScale is effectively 1.0 (showing at original size)
-    // and we add scaleXY to enlarge
-    val baseScale = 1.0f + (scaleXY / min(baseWidth, baseHeight))
+    val baseScale = 1.0f + scaleXY
 
     // Calculate max scale to prevent going outside screen bounds
     // Seeneva: maxScaleXY = min(screenWidth / balloonWidth, screenHeight / balloonHeight)

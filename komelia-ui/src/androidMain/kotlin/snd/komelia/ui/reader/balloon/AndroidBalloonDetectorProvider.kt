@@ -2,6 +2,7 @@ package snd.komelia.ui.reader.balloon
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.ui.geometry.Rect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,6 +13,10 @@ import kotlinx.coroutines.withContext
 class AndroidBalloonDetectorProvider(
     private val context: Context
 ) : BalloonDetectorProvider {
+
+    private companion object {
+        private const val TAG = "KomeliaBalloon"
+    }
     
     private var detector: BalloonDetector? = null
     private var initializationError: Exception? = null
@@ -39,6 +44,12 @@ class AndroidBalloonDetectorProvider(
         try {
             // Detect objects
             val detectedObjects = det.detect(bitmap)
+            if (detectedObjects.isNotEmpty()) {
+                val classCounts = detectedObjects.groupingBy { it.classId }.eachCount()
+                Log.d(TAG, "Detected objects: total=${detectedObjects.size} classCounts=$classCounts")
+            } else {
+                Log.d(TAG, "Detected objects: none")
+            }
             
             // Filter only speech balloons and sort in reading order
             val pageDirection = when (direction) {
@@ -83,6 +94,14 @@ class AndroidBalloonDetectorProvider(
             getOrCreateDetector() != null
         } catch (e: Exception) {
             false
+        }
+    }
+
+    fun describeModel(): String {
+        return try {
+            getOrCreateDetector()?.describeModel() ?: "detector unavailable"
+        } catch (e: Exception) {
+            "model info unavailable"
         }
     }
     

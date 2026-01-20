@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import snd.komelia.image.ReaderImage
+import snd.komelia.image.AndroidBitmap.toBitmap
 import snd.komelia.ui.reader.image.paged.PagedReaderState
 
 /**
@@ -56,26 +57,44 @@ actual fun BalloonDetectionEffect(
     // Detect balloons when page changes
     LaunchedEffect(currentPageImage, balloonsEnabled) {
         if (detector == null || !balloonsEnabled || currentPageImage == null) {
+            balloonsState.setDetectorAvailable(detector != null)
+            if (detector == null) {
+                balloonsState.setDetectionError("Detector unavailable")
+            }
             balloonsState.clearBalloons()
             currentPageBitmap?.recycle()
             currentPageBitmap = null
             return@LaunchedEffect
         }
 
+        balloonsState.setDetecting(true)
+        balloonsState.setDetectorAvailable(true)
+        balloonsState.setDetectionError(null)
+        val modelInfo = try {
+            detector.describeModel()
+        } catch (e: Exception) {
+            "model info unavailable"
+        }
+        balloonsState.setModelInfo(modelInfo)
+
+        val image = currentPageImage.getOriginalImage().getOrNull()
+        if (image == null) {
+            balloonsState.clearBalloons()
+            balloonsState.setDetecting(false)
+            return@LaunchedEffect
+        }
+
         try {
-            val image = currentPageImage.getOriginalImage().getOrNull() ?: return@LaunchedEffect
-            val bytes = image.getBytes()
             val width = image.width
             val height = image.height
 
-            withContext(Dispatchers.Default) {
-                // Convert RGBA bytes to Bitmap
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                bitmap.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(bytes))
-
-                // Store for cropping later
-                currentPageBitmap?.recycle()
-                currentPageBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            val (pageBitmap, balloons) = withContext(Dispatchers.Default) {
+                val rawBitmap = image.toBitmap()
+                val bitmap = rawBitmap.copy(Bitmap.Config.ARGB_8888, false).also {
+                    if (rawBitmap != it) {
+                        rawBitmap.recycle()
+                    }
+                }
 
                 // Get reading direction from settings (default RTL for manga)
                 val direction = when (pagedReaderState.readingDirection.value) {
@@ -84,25 +103,31 @@ actual fun BalloonDetectionEffect(
                 }
 
                 // Detect balloons
-                val balloons = detector.detectBalloons(
+                val detected = detector.detectBalloons(
                     imageData = bitmap,
                     pageWidth = width,
                     pageHeight = height,
                     direction = direction
                 )
 
-                println("BalloonDetectionEffect: Detected ${balloons.size} balloons on page")
-
-                balloonsState.setPageBalloons(balloons, width, height)
-
-                bitmap.recycle()
+                bitmap to detected
             }
 
-            image.close()
+            println("BalloonDetectionEffect: Detected ${balloons.size} balloons on page")
+
+            // Store for cropping later
+            currentPageBitmap?.recycle()
+            currentPageBitmap = pageBitmap
+
+            balloonsState.setPageBalloons(balloons, width, height)
         } catch (e: Exception) {
             println("BalloonDetectionEffect: Error during detection: ${e.message}")
             e.printStackTrace()
+            balloonsState.setDetectionError(e.message ?: "Detection error")
             balloonsState.clearBalloons()
+        } finally {
+            image.close()
+            balloonsState.setDetecting(false)
         }
     }
 

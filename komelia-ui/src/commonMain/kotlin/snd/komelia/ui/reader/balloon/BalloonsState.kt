@@ -3,6 +3,7 @@ package snd.komelia.ui.reader.balloon
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -34,13 +35,27 @@ class BalloonsState(
     val currentBalloon: StateFlow<Balloon?> = _currentBalloon.asStateFlow()
     
     // Whether balloon mode is enabled
-    private val _balloonsEnabled = MutableStateFlow(true)
+    private val _balloonsEnabled = MutableStateFlow(false)
     val balloonsEnabled: StateFlow<Boolean> = _balloonsEnabled.asStateFlow()
     
     // Whether the balloon overlay is visible
     private val _overlayVisible = MutableStateFlow(false)
     val overlayVisible: StateFlow<Boolean> = _overlayVisible.asStateFlow()
-    
+
+    // Whether detection is running for the current page
+    private val _isDetecting = MutableStateFlow(false)
+    val isDetecting: StateFlow<Boolean> = _isDetecting.asStateFlow()
+
+    // Detector availability/error for UI feedback
+    private val _detectorAvailable = MutableStateFlow(true)
+    val detectorAvailable: StateFlow<Boolean> = _detectorAvailable.asStateFlow()
+
+    private val _lastDetectionError = MutableStateFlow<String?>(null)
+    val lastDetectionError: StateFlow<String?> = _lastDetectionError.asStateFlow()
+
+    private val _modelInfo = MutableStateFlow<String?>(null)
+    val modelInfo: StateFlow<String?> = _modelInfo.asStateFlow()
+
     // Animation state for popup
     private val _isAnimating = MutableStateFlow(false)
     val isAnimating: StateFlow<Boolean> = _isAnimating.asStateFlow()
@@ -48,6 +63,12 @@ class BalloonsState(
     // Page size for coordinate calculations
     private val _pageSize = MutableStateFlow(IntSize.Zero)
     val pageSize: StateFlow<IntSize> = _pageSize.asStateFlow()
+
+    private val _pageDisplaySize = MutableStateFlow(IntSize.Zero)
+    val pageDisplaySize: StateFlow<IntSize> = _pageDisplaySize.asStateFlow()
+
+    private val _pageDisplayOffset = MutableStateFlow(IntOffset.Zero)
+    val pageDisplayOffset: StateFlow<IntOffset> = _pageDisplayOffset.asStateFlow()
     
     // Cropped balloon image for display
     private val _balloonImage = MutableStateFlow<androidx.compose.ui.graphics.ImageBitmap?>(null)
@@ -71,6 +92,7 @@ class BalloonsState(
         _currentBalloonIndex.value = -1
         _currentBalloon.value = null
         _overlayVisible.value = false
+        _isDetecting.value = false
     }
     
     /**
@@ -82,6 +104,35 @@ class BalloonsState(
         _currentBalloon.value = null
         _overlayVisible.value = false
         _balloonImage.value = null
+        _isDetecting.value = false
+        _lastDetectionError.value = null
+        _modelInfo.value = null
+        _pageDisplaySize.value = IntSize.Zero
+        _pageDisplayOffset.value = IntOffset.Zero
+    }
+
+    fun setPageDisplayLayout(displaySize: IntSize, displayOffset: IntOffset) {
+        _pageDisplaySize.value = displaySize
+        _pageDisplayOffset.value = displayOffset
+    }
+
+    /**
+     * Track detection state for the current page
+     */
+    fun setDetecting(detecting: Boolean) {
+        _isDetecting.value = detecting
+    }
+
+    fun setDetectorAvailable(available: Boolean) {
+        _detectorAvailable.value = available
+    }
+
+    fun setDetectionError(message: String?) {
+        _lastDetectionError.value = message
+    }
+
+    fun setModelInfo(info: String?) {
+        _modelInfo.value = info
     }
     
     /**
