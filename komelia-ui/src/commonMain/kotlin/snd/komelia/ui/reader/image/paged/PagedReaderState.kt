@@ -54,6 +54,7 @@ import snd.komelia.ui.strings.AppStrings
 import snd.komga.client.common.KomgaReadingDirection
 import kotlin.math.max
 import kotlin.math.roundToInt
+import snd.komelia.ui.reader.balloon.BalloonsState
 
 class PagedReaderState(
     private val cleanupScope: CoroutineScope,
@@ -90,6 +91,13 @@ class PagedReaderState(
     val layout = MutableStateFlow(SINGLE_PAGE)
     val layoutOffset = MutableStateFlow(false)
     val scaleType = MutableStateFlow(LayoutScaleType.SCREEN)
+    
+    // Balloon detection state - follows Seeneva pattern with index starting at -1
+    val balloonsState = BalloonsState(
+        scope = stateScope,
+        onNextPage = { actualNextPage() },
+        onPreviousPage = { actualPreviousPage() }
+    )
     val readingDirection = MutableStateFlow(LEFT_TO_RIGHT)
 
     suspend fun initialize() {
@@ -229,7 +237,34 @@ class PagedReaderState(
         loadPage(newSpreadIndex)
     }
 
+    /**
+     * Navigate to next balloon or next page
+     * When balloons are enabled and present, navigates through balloons first
+     */
     fun nextPage() {
+        if (balloonsState.balloonsEnabled.value && balloonsState.balloons.value.isNotEmpty()) {
+            balloonsState.nextBalloon()
+        } else {
+            actualNextPage()
+        }
+    }
+    
+    /**
+     * Navigate to previous balloon or previous page
+     * When balloons are enabled and present, navigates through balloons first
+     */
+    fun previousPage() {
+        if (balloonsState.balloonsEnabled.value && balloonsState.balloons.value.isNotEmpty()) {
+            balloonsState.previousBalloon()
+        } else {
+            actualPreviousPage()
+        }
+    }
+    
+    /**
+     * Actual page navigation (called when no balloons or after last balloon)
+     */
+    private fun actualNextPage() {
         val currentSpreadIndex = currentSpreadIndex.value
         val currentTransitionPage = transitionPage.value
         when {
@@ -256,7 +291,10 @@ class PagedReaderState(
         }
     }
 
-    fun previousPage() {
+    /**
+     * Actual previous page navigation
+     */
+    private fun actualPreviousPage() {
         val currentSpreadIndex = currentSpreadIndex.value
         val currentTransitionPage = transitionPage.value
         when {

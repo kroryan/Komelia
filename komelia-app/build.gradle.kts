@@ -64,6 +64,7 @@ kotlin {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs)
             implementation(projects.komeliaInfra.onnxruntime.jvm)
+            implementation(libs.tensorflow.lite)
         }
         jvmMain.dependencies {
             implementation(libs.jbr.api)
@@ -104,6 +105,7 @@ android {
     sourceSets["main"].manifest.srcFile("src/androidMain/$manifestFile")
     sourceSets["main"].res.srcDirs("src/androidMain/res")
     sourceSets["main"].resources.srcDirs("src/commonMain/resources")
+    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
     buildFeatures {
         buildConfig = true

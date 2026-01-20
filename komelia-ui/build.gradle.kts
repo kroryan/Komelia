@@ -104,6 +104,7 @@ kotlin {
             implementation(libs.slf4j.api)
             implementation(projects.komeliaInfra.imageDecoder.vips)
             implementation(projects.komeliaInfra.onnxruntime.jvm)
+            implementation(libs.tensorflow.lite)
         }
 
         jvmMain.dependencies {

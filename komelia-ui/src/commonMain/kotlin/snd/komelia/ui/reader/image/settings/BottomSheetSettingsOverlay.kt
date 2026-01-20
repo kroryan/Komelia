@@ -385,6 +385,37 @@ private fun PagedModeSettings(
             )
         }
 
+        // Speech Balloon Detection toggle
+        HorizontalDivider(Modifier.padding(vertical = 5.dp))
+        Text("Speech Balloons", style = MaterialTheme.typography.titleSmall)
+        val balloonsEnabled = pageState.balloonsState.balloonsEnabled.collectAsState().value
+        val balloonCount = pageState.balloonsState.balloons.collectAsState().value.size
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            InputChip(
+                selected = balloonsEnabled,
+                onClick = { pageState.balloonsState.setBalloonsEnabled(!balloonsEnabled) },
+                label = {
+                    Text(if (balloonsEnabled) "Balloons ON" else "Balloons OFF")
+                }
+            )
+            if (balloonsEnabled && balloonCount > 0) {
+                Text(
+                    "$balloonCount detected",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        if (balloonsEnabled) {
+            Text(
+                "Tap left/right to navigate balloons, center to hide",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 
 }

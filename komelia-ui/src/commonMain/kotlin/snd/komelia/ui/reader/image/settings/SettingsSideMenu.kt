@@ -424,6 +424,16 @@ private fun ColumnScope.PagedReaderSettingsContent(
                 contentPadding = PaddingValues(horizontal = 10.dp)
             )
         }
+        
+        // Balloon detection toggle
+        val balloonsEnabled = pageState.balloonsState.balloonsEnabled.collectAsState().value
+        SwitchWithLabel(
+            checked = balloonsEnabled,
+            onCheckedChange = { pageState.balloonsState.setBalloonsEnabled(it) },
+            label = { Text("Speech Balloon Detection") },
+            supportingText = { Text("Navigate through detected speech balloons") },
+            contentPadding = PaddingValues(horizontal = 10.dp)
+        )
     }
 }
 

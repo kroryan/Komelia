@@ -61,6 +61,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/androidMain/jniLibs")
+        }
+    }
 }
 
 val sqliteExtract: Configuration by configurations.creating

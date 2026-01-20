@@ -24,12 +24,15 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import snd.komelia.image.ReaderImageResult
 import snd.komelia.settings.model.PageDisplayLayout.DOUBLE_PAGES
 import snd.komelia.settings.model.PageDisplayLayout.DOUBLE_PAGES_NO_COVER
 import snd.komelia.settings.model.PageDisplayLayout.SINGLE_PAGE
 import snd.komelia.settings.model.PagedReadingDirection
 import snd.komelia.settings.model.PagedReadingDirection.LEFT_TO_RIGHT
 import snd.komelia.settings.model.PagedReadingDirection.RIGHT_TO_LEFT
+import snd.komelia.ui.reader.balloon.BalloonDetectionEffect
+import snd.komelia.ui.reader.balloon.BalloonOverlay
 import snd.komelia.ui.reader.image.ScreenScaleState
 import snd.komelia.ui.reader.image.common.PagedReaderHelpDialog
 import snd.komelia.ui.reader.image.common.ReaderControlsOverlay
@@ -64,6 +67,17 @@ fun BoxScope.PagedReaderContent(
     val layoutOffset = pagedReaderState.layoutOffset.collectAsState().value
 
     val currentContainerSize = screenScaleState.areaSize.collectAsState().value
+    
+    // Get current page image for balloon detection
+    val currentPageImage = pages.firstOrNull()?.let { page ->
+        (page.imageResult as? ReaderImageResult.Success)?.image
+    }
+    
+    // Trigger balloon detection when page changes
+    BalloonDetectionEffect(
+        pagedReaderState = pagedReaderState,
+        currentPageImage = currentPageImage
+    )
 
     val coroutineScope = rememberCoroutineScope()
     ReaderControlsOverlay(
@@ -101,6 +115,12 @@ fun BoxScope.PagedReaderContent(
                 }
             }
         }
+        
+        // Balloon popup overlay (shows cropped balloon when navigating)
+        BalloonOverlay(
+            balloonsState = pagedReaderState.balloonsState,
+            balloonImage = null // Image cropping handled per-platform in BalloonDetectionEffect
+        )
     }
 }
 

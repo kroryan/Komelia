@@ -1,4 +1,36 @@
-# Komelia - Komga media client
+# Komelia - Komga media client (Smart Reader Fork)
+
+> **⚠️ WORK IN PROGRESS - Speech Balloon Detection System**
+>
+> This is a fork of Komelia that aims to implement an automatic speech balloon detection and navigation system, inspired by [Seeneva](https://github.com/AubakirovDaniar/seeneva-reader-android).
+>
+> ## Current Status: NOT READY FOR USE
+>
+> The balloon detection feature is currently under development and has known issues:
+> - Detection may be inaccurate or produce false positives
+> - Zoom/scaling may not work correctly
+> - Performance issues may occur
+>
+> ### Goal
+> Implement a Seeneva-style speech balloon reader that:
+> 1. Automatically detects speech balloons using YOLOv4-tiny ML model
+> 2. Allows navigation through balloons with tap gestures (left/right)
+> 3. Shows zoomed balloons as centered popups with proportional scaling
+> 4. Supports both manga (RTL) and western comics (LTR) reading directions
+>
+> ### Implementation Files
+> - `komelia-ui/src/androidMain/kotlin/snd/komelia/ui/reader/balloon/` - Android TFLite detection
+> - `komelia-ui/src/commonMain/kotlin/snd/komelia/ui/reader/balloon/` - Common balloon state/UI
+> - `komelia-app/src/androidMain/assets/yolo_seeneva.tflite` - ML model from Seeneva
+>
+> ### How to Test (Debug Build)
+> 1. Build: `./gradlew :komelia-app:assembleDebug`
+> 2. Install APK from `komelia-app/build/outputs/apk/debug/`
+> 3. Open a comic in Paged reader mode
+> 4. Tap center to open settings, look for "Speech Balloons" toggle
+> 5. Enable and tap left/right sides of screen to navigate balloons
+
+---
 
 ### Downloads:
 
