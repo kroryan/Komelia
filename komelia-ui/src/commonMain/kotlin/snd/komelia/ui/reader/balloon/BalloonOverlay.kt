@@ -56,11 +56,6 @@ fun BoxScope.BalloonOverlay(
     val currentBalloon by balloonsState.currentBalloon.collectAsState()
     val currentIndex by balloonsState.currentBalloonIndex.collectAsState()
     val balloonCount = balloonsState.getBalloonCount()
-    val balloonsEnabled by balloonsState.balloonsEnabled.collectAsState()
-    val isDetecting by balloonsState.isDetecting.collectAsState()
-    val detectorAvailable by balloonsState.detectorAvailable.collectAsState()
-    val detectionError by balloonsState.lastDetectionError.collectAsState()
-    val modelInfo by balloonsState.modelInfo.collectAsState()
     val pageSize by balloonsState.pageSize.collectAsState()
     val pageDisplaySize by balloonsState.pageDisplaySize.collectAsState()
     val pageDisplayOffset by balloonsState.pageDisplayOffset.collectAsState()
@@ -79,7 +74,7 @@ fun BoxScope.BalloonOverlay(
 
         // Seeneva-style scale calculation
         // scaleXY is the additional scale factor (Seeneva uses 0.5dp from resources)
-        val baseScaleXY = with(density) { 0.5.dp.toPx() }
+        val baseScaleXY = with(density) { 0.33.dp.toPx() }
 
         AnimatedVisibility(
             visible = overlayVisible && currentBalloon != null && displayImage != null,
@@ -189,32 +184,6 @@ fun BoxScope.BalloonOverlay(
             }
         }
 
-        // Detection status indicator (for debugging when logcat is unavailable)
-        if (balloonsEnabled) {
-            val statusText = when {
-                !detectorAvailable -> "Detector unavailable"
-                detectionError != null -> "Detector error"
-                isDetecting -> "Detecting balloons..."
-                balloonCount == 0 -> "No balloons detected"
-                else -> "Balloons: $balloonCount"
-            }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(12.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = if (modelInfo.isNullOrBlank()) statusText else "$statusText\n$modelInfo",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 

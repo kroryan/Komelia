@@ -56,6 +56,7 @@ import snd.komelia.offline.OfflineRepositories
 import snd.komelia.onnxruntime.OnnxRuntime
 import snd.komelia.settings.ImageReaderSettingsRepository
 import snd.komelia.ui.DependencyContainer
+import snd.komelia.ui.reader.balloon.createBalloonIndexStore
 import snd.komelia.ui.strings.EnStrings
 import snd.komelia.updates.AppUpdater
 import snd.komelia.updates.OnnxModelDownloader
@@ -203,6 +204,7 @@ abstract class AppModule {
             settings = appRepositories.imageReaderSettingsRepository,
             onnxRuntimeUpscaler = upscaler,
         )
+        val balloonIndexStore = createBalloonIndexStore(getReaderCacheDirectory())
 
         return DependencyContainer(
             appStrings = MutableStateFlow(EnStrings),
@@ -232,6 +234,7 @@ abstract class AppModule {
             onnxRuntime = onnxRuntime,
             upscaler = upscaler,
             panelDetector = panelDetector,
+            balloonIndexStore = balloonIndexStore,
             offlineDependencies = offlineModule,
         )
     }

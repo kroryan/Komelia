@@ -291,12 +291,17 @@ private fun BottomSheetReadingModeSettings(
                     onClick = { onReaderTypeChange(PANELS) },
                     label = { Text("Panels") }
                 )
-            if (readerType == PAGED) {
-                val balloonsEnabled = pagedReaderState.balloonsState.balloonsEnabled.collectAsState().value
+            if (readerType == PAGED || readerType == CONTINUOUS) {
+                val balloonsState = if (readerType == CONTINUOUS) {
+                    continuousReaderState.balloonsState
+                } else {
+                    pagedReaderState.balloonsState
+                }
+                val balloonsEnabled = balloonsState.balloonsEnabled.collectAsState().value
                 InputChip(
                     selected = balloonsEnabled,
-                    onClick = { pagedReaderState.balloonsState.setBalloonsEnabled(!balloonsEnabled) },
-                    label = { Text(if (balloonsEnabled) "Balloons ON" else "Balloons OFF") }
+                    onClick = { balloonsState.setBalloonsEnabled(!balloonsEnabled) },
+                    label = { Text("Smart") }
                 )
             }
         }
@@ -393,9 +398,9 @@ private fun PagedModeSettings(
             )
         }
 
-        // Speech Balloon Detection info
+        // Smart mode info
         HorizontalDivider(Modifier.padding(vertical = 5.dp))
-        Text("Speech Balloons", style = MaterialTheme.typography.titleSmall)
+        Text("Smart mode", style = MaterialTheme.typography.titleSmall)
         val balloonsEnabled = pageState.balloonsState.balloonsEnabled.collectAsState().value
         val balloonCount = pageState.balloonsState.balloons.collectAsState().value.size
         if (balloonsEnabled && balloonCount > 0) {
@@ -407,7 +412,7 @@ private fun PagedModeSettings(
         }
         if (balloonsEnabled) {
             Text(
-                "Tap left/right to navigate balloons, center to hide",
+                "Tap left/right to navigate balloons, center to hide. Long-press a balloon to open",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -514,6 +519,24 @@ private fun ContinuousModeSettings(
                 )
             }
 
+        }
+        HorizontalDivider(Modifier.padding(vertical = 5.dp))
+        Text("Smart mode", style = MaterialTheme.typography.titleSmall)
+        val balloonsEnabled = state.balloonsState.balloonsEnabled.collectAsState().value
+        val balloonCount = state.balloonsState.balloons.collectAsState().value.size
+        if (balloonsEnabled && balloonCount > 0) {
+            Text(
+                "$balloonCount detected",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (balloonsEnabled) {
+            Text(
+                "Tap left/right to navigate balloons, center to hide. Long-press a balloon to open",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         Spacer(Modifier.heightIn(30.dp))
     }

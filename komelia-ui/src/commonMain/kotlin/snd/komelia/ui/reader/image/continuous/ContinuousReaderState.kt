@@ -1,12 +1,15 @@
 package snd.komelia.ui.reader.image.continuous
 
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -56,6 +59,14 @@ import snd.komelia.settings.model.ContinuousReadingDirection
 import snd.komelia.settings.model.ContinuousReadingDirection.LEFT_TO_RIGHT
 import snd.komelia.settings.model.ContinuousReadingDirection.RIGHT_TO_LEFT
 import snd.komelia.settings.model.ContinuousReadingDirection.TOP_TO_BOTTOM
+import snd.komelia.ui.reader.balloon.BalloonsState
+import snd.komelia.ui.reader.balloon.Balloon
+import snd.komelia.ui.reader.balloon.PageBalloons
+import snd.komelia.ui.reader.balloon.ReadingDirection
+import snd.komelia.ui.reader.balloon.BalloonIndexStore
+import snd.komelia.ui.reader.balloon.StoredBalloonIndex
+import snd.komelia.ui.reader.balloon.toPageBalloons
+import snd.komelia.ui.reader.balloon.toStored
 import snd.komelia.ui.reader.image.PageMetadata
 import snd.komelia.ui.reader.image.ReaderState
 import snd.komelia.ui.reader.image.ScreenScaleState
@@ -65,6 +76,8 @@ import snd.komga.client.common.KomgaReadingDirection
 import kotlin.math.roundToInt
 
 private val logger = KotlinLogging.logger("ContinuousReaderState")
+
+data class BalloonPageKey(val bookId: KomgaBookId, val pageNumber: Int)
 
 class ContinuousReaderState(
     private val cleanupScope: CoroutineScope,
@@ -76,6 +89,7 @@ class ContinuousReaderState(
     private val readerImageFactory: ReaderImageFactory,
     private val pageChangeFlow: MutableSharedFlow<Unit>,
     val screenScaleState: ScreenScaleState,
+    private val balloonIndexStore: BalloonIndexStore?,
 ) {
     private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -94,6 +108,27 @@ class ContinuousReaderState(
 
     val currentBookPages = readerState.booksState.filterNotNull().map { it.currentBookPages }
     val currentBookPageIndex = readerState.readProgressPage.map { it - 1 }
+    val currentPage: Flow<PageMetadata?> = combine(currentBookPages, currentBookPageIndex) { pages, index ->
+        pages.getOrNull(index)
+    }.distinctUntilChanged()
+
+    private val _balloonIndex = MutableStateFlow<Map<BalloonPageKey, PageBalloons>>(emptyMap())
+    val balloonIndex = _balloonIndex.asStateFlow()
+    private val _balloonIndexing = MutableStateFlow(false)
+    val balloonIndexing = _balloonIndexing.asStateFlow()
+    private val _balloonIndexProgress = MutableStateFlow(0)
+    val balloonIndexProgress = _balloonIndexProgress.asStateFlow()
+    private val _balloonIndexTotal = MutableStateFlow(0)
+    val balloonIndexTotal = _balloonIndexTotal.asStateFlow()
+    private val _balloonIndexBookId = MutableStateFlow<KomgaBookId?>(null)
+    private val _balloonRefreshInProgress = MutableStateFlow<Set<BalloonPageKey>>(emptySet())
+    private val _balloonRefreshDone = MutableStateFlow<Set<BalloonPageKey>>(emptySet())
+
+    val balloonsState = BalloonsState(
+        scope = stateScope,
+        onNextPage = { launchScrollFromUi(forward = true) },
+        onPreviousPage = { launchScrollFromUi(forward = false) }
+    )
 
     private val nextBook = readerState.booksState.filterNotNull().map { it.nextBook }
     private val previousBook = readerState.booksState.filterNotNull().map { it.previousBook }
@@ -244,10 +279,190 @@ class ContinuousReaderState(
         imageLoadScope.coroutineContext.cancelChildren()
         pageIntervals.value = emptyList()
         currentIntervalIndex.value = 0
+        balloonsState.clearBalloons()
+        clearBalloonIndex()
 
         imagesInUse.values.forEach { it.close() }
         imagesInUse.clear()
         imageCache.invalidateAll()
+    }
+
+    suspend fun loadImageForBalloonIndex(page: PageMetadata): ReaderImageResult {
+        return imageLoader.loadReaderImage(page.bookId, page.pageNumber)
+    }
+
+    fun getIndexedBalloons(page: PageMetadata): PageBalloons? {
+        return _balloonIndex.value[BalloonPageKey(page.bookId, page.pageNumber)]
+    }
+
+    fun setBalloonIndexEntry(page: PageMetadata, balloons: List<Balloon>, pageWidth: Int, pageHeight: Int) {
+        val key = BalloonPageKey(page.bookId, page.pageNumber)
+        val entry = PageBalloons(
+            pageIndex = page.pageNumber,
+            balloons = balloons,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight
+        )
+        _balloonIndex.update { it + (key to entry) }
+    }
+
+    fun mergeBalloonIndexEntry(
+        page: PageMetadata,
+        balloons: List<Balloon>,
+        pageWidth: Int,
+        pageHeight: Int,
+        direction: ReadingDirection
+    ) {
+        val key = BalloonPageKey(page.bookId, page.pageNumber)
+        val existing = _balloonIndex.value[key]
+        if (existing == null) {
+            setBalloonIndexEntry(page, balloons, pageWidth, pageHeight)
+            return
+        }
+        if (balloons.isEmpty()) return
+
+        val merged = existing.balloons.toMutableList()
+        balloons.forEach { candidate ->
+            val duplicate = merged.any { existingBalloon ->
+                iou(existingBalloon.normalizedRect, candidate.normalizedRect) > 0.6f
+            }
+            if (!duplicate) {
+                merged.add(candidate)
+            }
+        }
+        val sorted = merged.sortedWith(
+            compareBy<Balloon> { it.normalizedRect.top }
+                .thenBy { if (direction == ReadingDirection.RTL) -it.normalizedRect.left else it.normalizedRect.left }
+        )
+        val reindexed = sorted.mapIndexed { index, balloon ->
+            if (balloon.index == index) balloon else balloon.copy(index = index)
+        }
+        val finalWidth = if (pageWidth > 0) pageWidth else existing.pageWidth
+        val finalHeight = if (pageHeight > 0) pageHeight else existing.pageHeight
+        _balloonIndex.update {
+            it + (key to existing.copy(balloons = reindexed, pageWidth = finalWidth, pageHeight = finalHeight))
+        }
+    }
+
+    suspend fun loadBalloonIndexFromStore(pages: List<PageMetadata>): Boolean {
+        val store = balloonIndexStore ?: return false
+        val bookId = pages.firstOrNull()?.bookId ?: return false
+        if (_balloonIndexBookId.value == bookId && _balloonIndex.value.isNotEmpty()) {
+            return true
+        }
+        val snapshot = store.load(bookId) ?: return false
+        if (snapshot.pages.isEmpty()) return false
+
+        val entries = snapshot.pages.associate { page ->
+            BalloonPageKey(bookId, page.pageNumber) to page.toPageBalloons()
+        }
+        _balloonIndex.value = entries
+        _balloonIndexTotal.value = snapshot.pages.size
+        _balloonIndexProgress.value = snapshot.pages.size
+        _balloonIndexing.value = false
+        _balloonIndexBookId.value = bookId
+        return true
+    }
+
+    suspend fun persistBalloonIndex(pages: List<PageMetadata>) {
+        val store = balloonIndexStore ?: return
+        val bookId = pages.firstOrNull()?.bookId ?: return
+        val storedPages = pages.map { page ->
+            val key = BalloonPageKey(page.bookId, page.pageNumber)
+            val entry = _balloonIndex.value[key]
+                ?: PageBalloons(
+                    pageIndex = page.pageNumber,
+                    balloons = emptyList(),
+                    pageWidth = page.size?.width ?: 0,
+                    pageHeight = page.size?.height ?: 0,
+                )
+            entry.toStored()
+        }
+        store.save(bookId, StoredBalloonIndex(storedPages))
+        _balloonIndexBookId.value = bookId
+    }
+
+    fun resetBalloonIndex(total: Int) {
+        _balloonIndex.value = emptyMap()
+        _balloonIndexTotal.value = total
+        _balloonIndexProgress.value = 0
+        _balloonIndexing.value = total > 0
+    }
+
+    fun updateBalloonIndexProgress(progress: Int) {
+        _balloonIndexProgress.value = progress
+        if (progress >= _balloonIndexTotal.value) {
+            _balloonIndexing.value = false
+        }
+    }
+
+    fun clearBalloonIndex() {
+        _balloonIndex.value = emptyMap()
+        _balloonIndexTotal.value = 0
+        _balloonIndexProgress.value = 0
+        _balloonIndexing.value = false
+        _balloonIndexBookId.value = null
+        _balloonRefreshInProgress.value = emptySet()
+        _balloonRefreshDone.value = emptySet()
+    }
+
+    fun shouldRefreshBalloonIndex(page: PageMetadata): Boolean {
+        val key = BalloonPageKey(page.bookId, page.pageNumber)
+        if (_balloonRefreshInProgress.value.contains(key)) return false
+        if (_balloonRefreshDone.value.contains(key)) return false
+        return true
+    }
+
+    fun markBalloonRefreshInProgress(page: PageMetadata) {
+        val key = BalloonPageKey(page.bookId, page.pageNumber)
+        _balloonRefreshInProgress.update { it + key }
+    }
+
+    fun markBalloonRefreshDone(page: PageMetadata) {
+        val key = BalloonPageKey(page.bookId, page.pageNumber)
+        _balloonRefreshInProgress.update { it - key }
+        _balloonRefreshDone.update { it + key }
+    }
+
+    private fun iou(a: Rect, b: Rect): Float {
+        val left = maxOf(a.left, b.left)
+        val top = maxOf(a.top, b.top)
+        val right = minOf(a.right, b.right)
+        val bottom = minOf(a.bottom, b.bottom)
+        val intersectionWidth = (right - left).coerceAtLeast(0f)
+        val intersectionHeight = (bottom - top).coerceAtLeast(0f)
+        val intersection = intersectionWidth * intersectionHeight
+        val union = a.width * a.height + b.width * b.height - intersection
+        if (union <= 0f) return 0f
+        return intersection / union
+    }
+
+    private fun launchScrollFromUi(forward: Boolean) {
+        val composeScope = screenScaleState.composeScope
+        if (composeScope != null) {
+            composeScope.launch {
+                if (forward) scrollScreenForward() else scrollScreenBackward()
+            }
+            return
+        }
+
+        // Fallback without animation when no frame clock is available.
+        val containerSize = screenScaleState.areaSize.value
+        val delta = when (readingDirection.value) {
+            TOP_TO_BOTTOM -> containerSize.height.toFloat()
+            LEFT_TO_RIGHT, RIGHT_TO_LEFT -> containerSize.width.toFloat()
+        }
+        scrollBy(if (forward) delta else -delta)
+    }
+
+    fun scrollByFromUi(delta: Float) {
+        val composeScope = screenScaleState.composeScope
+        if (composeScope != null) {
+            composeScope.launch { animateScrollBySmooth(delta) }
+            return
+        }
+
+        scrollBy(delta)
     }
 
     suspend fun onCurrentPageChange(page: PageMetadata) {
@@ -350,6 +565,26 @@ class ContinuousReaderState(
 
             amount < 0 && lazyListState.canScrollBackward -> {
                 lazyListState.animateScrollBy(amount, spring(stiffness = Spring.StiffnessLow))
+            }
+
+            else -> scrollBy(amount)
+        }
+    }
+
+    private suspend fun animateScrollBySmooth(amount: Float) {
+        when {
+            amount > 0 && lazyListState.canScrollForward -> {
+                lazyListState.animateScrollBy(
+                    amount,
+                    tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                )
+            }
+
+            amount < 0 && lazyListState.canScrollBackward -> {
+                lazyListState.animateScrollBy(
+                    amount,
+                    tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                )
             }
 
             else -> scrollBy(amount)

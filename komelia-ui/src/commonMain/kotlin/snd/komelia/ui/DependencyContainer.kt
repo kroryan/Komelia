@@ -17,6 +17,7 @@ import snd.komelia.image.processing.ColorCorrectionStep
 import snd.komelia.komga.api.KomgaApi
 import snd.komelia.offline.OfflineDependencies
 import snd.komelia.onnxruntime.OnnxRuntime
+import snd.komelia.ui.reader.balloon.BalloonIndexStore
 import snd.komelia.ui.strings.AppStrings
 import snd.komelia.updates.AppUpdater
 import snd.komelia.updates.OnnxModelDownloader
@@ -50,6 +51,7 @@ data class DependencyContainer(
     val onnxRuntime: OnnxRuntime?,
     val upscaler: KomeliaUpscaler?,
     val panelDetector: KomeliaPanelDetector?,
+    val balloonIndexStore: BalloonIndexStore?,
 
     val offlineDependencies: OfflineDependencies,
 )

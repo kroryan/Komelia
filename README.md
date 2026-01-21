@@ -3,30 +3,37 @@
 > **WORK IN PROGRESS - Speech Balloon Detection System**
 >
 > This is a fork of Komelia that implements an automatic speech balloon detection and navigation system inspired by
-> [Seeneva](https://github.com/AubakirovDaniar/seeneva-reader-android). Full credit to the Seeneva project for the
+> [Seeneva](https://github.com/Seeneva/seeneva-reader-android). Full credit to the Seeneva project for the
 > reference behavior, UX, and ML model approach that guided this implementation.
 >
 > ## Current Status: BASIC PREVIEW
 >
-> Balloon navigation is usable, but only in a limited configuration:
-> - Reader mode: Paged only
-> - Scaling: Screen Fit only
-> - Other reader modes and scale modes are not wired yet
+> Balloon navigation is usable, but still limited:
+> - Reader modes: Paged and Continuous
+> - Scaling: Screen Fit only (recommended)
+> - Panels and other scale modes are not wired yet
+> - Continuous mode can still miss some balloons depending on page layout
 >
 > ### Goal
 > Implement a Seeneva-style speech balloon reader that:
 > 1. Automatically detects speech balloons using YOLOv4-tiny ML model
 > 2. Allows navigation through balloons with tap gestures (left/right)
-> 3. Shows zoomed balloons as centered popups with proportional scaling
+> 3. Shows zoomed balloons as popups with proportional scaling
 > 4. Supports both manga (RTL) and western comics (LTR) reading directions
+> 5. Continuous mode can pre-index balloons for the current comic and reuse that index on the next open
+> 6. Continuous mode refreshes the current page and next page in the background to fill missing balloons
 
 > ### Implementation Notes
 > The current flow mirrors Seeneva's behavior: each page is processed by a lightweight ML model, detections are stored
 > per page, and taps navigate between balloons before allowing page turns. The overlay computes proportional zoom and
 > positions each balloon over its on-page location, rather than centering everything.
 >
+> In Continuous mode, balloon detections are indexed once and stored on disk for the current comic. This makes
+> navigation snappy after the first pass. While reading, the current page and next page are re-checked in the
+> background to catch any missed balloons without interrupting navigation.
+>
 > ### Work Remaining
-> - Integrate balloon navigation with other reader modes (Continuous, Webtoon, etc.)
+> - Integrate balloon navigation with other reader modes (Panels, Webtoon, etc.)
 > - Support additional scale modes beyond Screen Fit (e.g., Fit Width, Free Scale)
 > - Expand testing for edge cases (small balloons, overlapping bubbles, multi-panel pages)
 > - Performance tuning and optional caching for large chapters
@@ -39,9 +46,13 @@
 > ### How to Test (Debug Build)
 > 1. Build: `./gradlew :komelia-app:assembleDebug`
 > 2. Install APK from `komelia-app/build/outputs/apk/debug/`
-> 3. Open a comic in Paged reader mode
-> 4. Tap center to open settings, look for "Speech Balloons" toggle
+> 3. Open a comic in Paged or Continuous reader mode
+> 4. Tap center to open settings, look for "Smart" toggle
 > 5. Enable and tap left/right sides of screen to navigate balloons
+> 6. Long-press a balloon to open it directly
+>
+> **Note:** For the long-press selection, try to ensure the balloon is around the middle of the screen (or slightly above).
+> Some Komelia gesture layers can interfere if the balloon is too low on screen.
 
 ---
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
@@ -44,15 +45,23 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection.Ltr
 import androidx.compose.ui.unit.LayoutDirection.Rtl
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import snd.komelia.image.ReaderImageResult
 import snd.komelia.settings.model.ContinuousReadingDirection.LEFT_TO_RIGHT
 import snd.komelia.settings.model.ContinuousReadingDirection.RIGHT_TO_LEFT
 import snd.komelia.settings.model.ContinuousReadingDirection.TOP_TO_BOTTOM
+import snd.komelia.ui.reader.balloon.BalloonDetectionEffect
+import snd.komelia.ui.reader.balloon.BalloonIndexingEffect
+import snd.komelia.ui.reader.balloon.BalloonIndexRefreshEffect
+import snd.komelia.ui.reader.balloon.BalloonOverlay
+import snd.komelia.ui.reader.balloon.ReadingDirection
 import snd.komelia.ui.reader.image.PageMetadata
 import snd.komelia.ui.reader.image.ScreenScaleState
 import snd.komelia.ui.reader.image.common.ContinuousReaderHelpDialog
@@ -73,6 +82,28 @@ fun BoxScope.ContinuousReaderContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val readingDirection = continuousReaderState.readingDirection.collectAsState().value
+    val balloonsState = continuousReaderState.balloonsState
+    val balloonsEnabled = balloonsState.balloonsEnabled.collectAsState().value
+    val balloonsDetecting = balloonsState.isDetecting.collectAsState().value
+    val hasBalloons = balloonsState.balloons.collectAsState().value.isNotEmpty()
+    val currentBalloon = balloonsState.currentBalloon.collectAsState().value
+    val currentBalloonIndex = balloonsState.currentBalloonIndex.collectAsState().value
+    val overlayVisible = balloonsState.overlayVisible.collectAsState().value
+    val balloonDisplaySize = balloonsState.pageDisplaySize.collectAsState().value
+    val balloonDisplayOffset = balloonsState.pageDisplayOffset.collectAsState().value
+    val indexInProgress = continuousReaderState.balloonIndexing.collectAsState().value
+    val indexProgress = continuousReaderState.balloonIndexProgress.collectAsState().value
+    val indexTotal = continuousReaderState.balloonIndexTotal.collectAsState().value
+    val balloonDirection = when (readingDirection) {
+        RIGHT_TO_LEFT -> ReadingDirection.RTL
+        LEFT_TO_RIGHT, TOP_TO_BOTTOM -> ReadingDirection.LTR
+    }
+    var lastCenteredBalloon by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    LaunchedEffect(overlayVisible) {
+        if (!overlayVisible) {
+            lastCenteredBalloon = null
+        }
+    }
 
     val layoutDirection = remember(readingDirection) {
         when (readingDirection) {
@@ -90,6 +121,9 @@ fun BoxScope.ContinuousReaderContent(
     }
 
     val areaSize = screenScaleState.areaSize.collectAsState().value
+    val density = LocalDensity.current
+    val pageSpacingDp = continuousReaderState.pageSpacing.collectAsState().value
+    val pageSpacingPx = with(density) { pageSpacingDp.dp.toPx() }
     val keysState = remember(readingDirection, volumeKeysNavigation) {
         KeyMapState(
             readingDirection = readingDirection,
@@ -102,11 +136,201 @@ fun BoxScope.ContinuousReaderContent(
             changeReadingDirection = continuousReaderState::onReadingDirectionChange
         )
     }
+    var currentPage by remember { mutableStateOf<PageMetadata?>(null) }
+    var currentPageImage by remember { mutableStateOf<snd.komelia.image.ReaderImage?>(null) }
+    var pageDisplaySize by remember { mutableStateOf(IntSize.Zero) }
+    val indexedPages = continuousReaderState.balloonIndex.collectAsState().value
+    val indexedEntry = currentPage?.let { page ->
+        indexedPages[snd.komelia.ui.reader.image.continuous.BalloonPageKey(page.bookId, page.pageNumber)]
+    }
+
+    LaunchedEffect(balloonsEnabled, readingDirection, areaSize) {
+        if (!balloonsEnabled) {
+            currentPage = null
+            return@LaunchedEffect
+        }
+        snapshotFlow { continuousReaderState.lazyListState.layoutInfo }.collect { layoutInfo ->
+            val visibleItems = layoutInfo.visibleItemsInfo.filter { it.key is PageMetadata }
+            if (visibleItems.isEmpty()) return@collect
+            val viewportCenter = when (readingDirection) {
+                TOP_TO_BOTTOM -> areaSize.height / 2
+                LEFT_TO_RIGHT, RIGHT_TO_LEFT -> areaSize.width / 2
+            }
+            val closest = visibleItems.minByOrNull { item ->
+                val itemCenter = item.offset + (item.size / 2)
+                abs(itemCenter - viewportCenter)
+            }
+            currentPage = closest?.key as? PageMetadata
+        }
+    }
+
+    LaunchedEffect(currentPage) {
+        pageDisplaySize = IntSize.Zero
+        val page = currentPage ?: run {
+            currentPageImage = null
+            return@LaunchedEffect
+        }
+        continuousReaderState.getPageDisplaySize(page).collect { pageDisplaySize = it }
+    }
+
+    LaunchedEffect(currentPage, balloonsEnabled) {
+        val page = currentPage
+        if (!balloonsEnabled || page == null) {
+            currentPageImage = null
+            balloonsState.clearBalloons()
+            return@LaunchedEffect
+        }
+        currentPageImage = continuousReaderState.waitForImage(page)
+    }
+
+    val pagesForIndex = continuousReaderState.currentBookPages.collectAsState(initial = emptyList()).value
+    BalloonIndexingEffect(
+        pages = pagesForIndex,
+        enabled = balloonsEnabled,
+        readingDirection = balloonDirection,
+        continuousReaderState = continuousReaderState
+    )
+    val refreshPages = remember(currentPage, pagesForIndex) {
+        val page = currentPage ?: return@remember emptyList()
+        val nextIndex = page.pageNumber
+        val nextPage = pagesForIndex.getOrNull(nextIndex)
+        listOfNotNull(page, nextPage)
+    }
+    BalloonIndexRefreshEffect(
+        pages = refreshPages,
+        enabled = balloonsEnabled,
+        readingDirection = balloonDirection,
+        continuousReaderState = continuousReaderState
+    )
+
+    BalloonDetectionEffect(
+        balloonsState = balloonsState,
+        readingDirection = balloonDirection,
+        currentPageImage = currentPageImage,
+        preDetected = indexedEntry
+    )
+
+    LaunchedEffect(balloonsEnabled, indexInProgress, indexedEntry) {
+        if (!balloonsEnabled) return@LaunchedEffect
+        balloonsState.setDetecting(indexInProgress && indexedEntry == null)
+    }
+
+    LaunchedEffect(currentPage, indexedEntry, overlayVisible, currentBalloonIndex) {
+        val entry = indexedEntry ?: return@LaunchedEffect
+        if (overlayVisible || currentBalloonIndex >= 0) return@LaunchedEffect
+        balloonsState.setPageBalloons(entry.balloons, entry.pageWidth, entry.pageHeight)
+    }
+
+    LaunchedEffect(currentPage, pageDisplaySize, readingDirection, areaSize, pageSpacingPx) {
+        val page = currentPage
+        if (page == null) {
+            balloonsState.setPageDisplayLayout(IntSize.Zero, IntOffset.Zero)
+            return@LaunchedEffect
+        }
+        snapshotFlow { continuousReaderState.lazyListState.layoutInfo }.collect { layoutInfo ->
+            val item = layoutInfo.visibleItemsInfo.firstOrNull { it.key == page } ?: return@collect
+            val fallbackSize = if (readingDirection == TOP_TO_BOTTOM) {
+                IntSize(
+                    width = item.size,
+                    height = (item.size - pageSpacingPx).toInt().coerceAtLeast(1)
+                )
+            } else {
+                IntSize(
+                    width = (item.size - pageSpacingPx).toInt().coerceAtLeast(1),
+                    height = item.size
+                )
+            }
+            val displaySize = if (pageDisplaySize != IntSize.Zero) pageDisplaySize else fallbackSize
+            val horizontalPadding = if (readingDirection == TOP_TO_BOTTOM) {
+                continuousReaderState.sidePaddingPx.value
+            } else {
+                0
+            }
+            val verticalPadding = if (readingDirection != TOP_TO_BOTTOM) {
+                continuousReaderState.sidePaddingPx.value
+            } else {
+                0
+            }
+            val availableWidth = (areaSize.width - (horizontalPadding * 2)).coerceAtLeast(0)
+            val availableHeight = (areaSize.height - (verticalPadding * 2)).coerceAtLeast(0)
+            val offsetX = if (readingDirection == TOP_TO_BOTTOM) {
+                horizontalPadding + ((availableWidth - displaySize.width) / 2).coerceAtLeast(0)
+            } else {
+                item.offset
+            }
+            val offsetY = if (readingDirection == TOP_TO_BOTTOM) {
+                item.offset
+            } else {
+                verticalPadding + ((availableHeight - displaySize.height) / 2).coerceAtLeast(0)
+            }
+            balloonsState.setPageDisplayLayout(displaySize, IntOffset(offsetX, offsetY))
+        }
+    }
+
+    LaunchedEffect(
+        balloonsEnabled,
+        currentBalloon,
+        overlayVisible,
+        balloonDisplaySize,
+        balloonDisplayOffset,
+        areaSize,
+        readingDirection
+    ) {
+        val balloon = currentBalloon ?: return@LaunchedEffect
+        if (!balloonsEnabled || !overlayVisible) return@LaunchedEffect
+        if (balloonDisplaySize == IntSize.Zero) return@LaunchedEffect
+        val pageNumber = currentPage?.pageNumber ?: return@LaunchedEffect
+        val balloonKey = pageNumber to balloon.index
+        if (lastCenteredBalloon == balloonKey) return@LaunchedEffect
+
+        val centerOnPage = when (readingDirection) {
+            TOP_TO_BOTTOM -> balloon.normalizedRect.center.y * balloonDisplaySize.height
+            LEFT_TO_RIGHT, RIGHT_TO_LEFT -> balloon.normalizedRect.center.x * balloonDisplaySize.width
+        }
+        val targetOnScreen = when (readingDirection) {
+            TOP_TO_BOTTOM -> balloonDisplayOffset.y + centerOnPage
+            LEFT_TO_RIGHT, RIGHT_TO_LEFT -> balloonDisplayOffset.x + centerOnPage
+        }
+        val screenCenter = when (readingDirection) {
+            TOP_TO_BOTTOM -> areaSize.height / 2f
+            LEFT_TO_RIGHT, RIGHT_TO_LEFT -> areaSize.width / 2f
+        }
+        val delta = targetOnScreen - screenCenter
+        if (kotlin.math.abs(delta) < 8f) return@LaunchedEffect
+
+        continuousReaderState.scrollByFromUi(delta)
+        lastCenteredBalloon = balloonKey
+    }
+
     ReaderControlsOverlay(
         readingDirection = layoutDirection,
         onNexPageClick = { coroutineScope.launch { continuousReaderState.scrollScreenForward() } },
         onPrevPageClick = { coroutineScope.launch { continuousReaderState.scrollScreenBackward() } },
         contentAreaSize = areaSize,
+        onTap = { offset ->
+            if (!balloonsEnabled) {
+                return@ReaderControlsOverlay false
+            }
+            if (indexInProgress) {
+                return@ReaderControlsOverlay true
+            }
+            if (balloonsDetecting) {
+                return@ReaderControlsOverlay true
+            }
+            val handled = balloonsState.handleTap(offset, areaSize, balloonDirection)
+            if (handled) {
+                return@ReaderControlsOverlay true
+            }
+            hasBalloons
+        },
+        onLongPress = { offset ->
+            if (!balloonsEnabled || indexInProgress || balloonsDetecting) {
+                return@ReaderControlsOverlay false
+            }
+            val hitBalloon = balloonsState.findBalloonAt(offset) ?: return@ReaderControlsOverlay false
+            balloonsState.selectBalloon(hitBalloon)
+            true
+        },
         isSettingsMenuOpen = showSettingsMenu,
         onSettingsMenuToggle = { onShowSettingsMenuChange(!showSettingsMenu) },
         modifier = Modifier.onKeyEvent { event ->
@@ -149,6 +373,28 @@ fun BoxScope.ContinuousReaderContent(
         ScalableContainer(continuousReaderState.screenScaleState) {
             ReaderPages(state = continuousReaderState)
         }
+        if (balloonsEnabled && indexInProgress && indexTotal > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+                        shape = MaterialTheme.shapes.medium
+                    )
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Indexing Smart mode $indexProgress/$indexTotal",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        BalloonOverlay(
+            balloonsState = balloonsState,
+            balloonImage = null
+        )
     }
 }
 

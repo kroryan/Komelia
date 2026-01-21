@@ -198,6 +198,7 @@ fun ReaderControlsOverlay(
     onSettingsMenuToggle: () -> Unit,
     contentAreaSize: IntSize,
     onTap: ((Offset) -> Boolean)? = null,
+    onLongPress: ((Offset) -> Boolean)? = null,
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -214,6 +215,7 @@ fun ReaderControlsOverlay(
         else coroutineScope.launch { onPrevPageClick() }
     }
     val updatedOnTap by rememberUpdatedState(onTap)
+    val updatedOnLongPress by rememberUpdatedState(onLongPress)
 
     Box(
         modifier = modifier
@@ -225,17 +227,24 @@ fun ReaderControlsOverlay(
                 onSettingsMenuToggle,
                 isSettingsMenuOpen
             ) {
-                detectTapGestures { offset ->
-                    if (updatedOnTap?.invoke(offset) == true) {
-                        return@detectTapGestures
+                detectTapGestures(
+                    onLongPress = { offset ->
+                        if (updatedOnLongPress?.invoke(offset) == true) {
+                            return@detectTapGestures
+                        }
+                    },
+                    onTap = { offset ->
+                        if (updatedOnTap?.invoke(offset) == true) {
+                            return@detectTapGestures
+                        }
+                        val actionWidth = contentAreaSize.width.toFloat() / 3
+                        when (offset.x) {
+                            in 0f..<actionWidth -> leftAction()
+                            in actionWidth..actionWidth * 2 -> centerAction()
+                            else -> rightAction()
+                        }
                     }
-                    val actionWidth = contentAreaSize.width.toFloat() / 3
-                    when (offset.x) {
-                        in 0f..<actionWidth -> leftAction()
-                        in actionWidth..actionWidth * 2 -> centerAction()
-                        else -> rightAction()
-                    }
-                }
+                )
             },
         contentAlignment = Alignment.Center
     ) {

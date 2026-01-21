@@ -35,6 +35,7 @@ import snd.komelia.ui.LoadState
 import snd.komelia.ui.reader.image.continuous.ContinuousReaderState
 import snd.komelia.ui.reader.image.paged.PagedReaderState
 import snd.komelia.ui.reader.image.panels.PanelsReaderState
+import snd.komelia.ui.reader.balloon.BalloonIndexStore
 import snd.komelia.ui.settings.imagereader.onnxruntime.OnnxRuntimeSettingsState
 import snd.komelia.ui.strings.AppStrings
 import snd.komga.client.book.KomgaBookId
@@ -60,6 +61,7 @@ class ReaderViewModel(
     private val panelDetector: KomeliaPanelDetector?,
     private val upscaler: KomeliaUpscaler?,
     val colorCorrectionIsActive: Flow<Boolean>,
+    private val balloonIndexStore: BalloonIndexStore?,
 ) : ScreenModel {
     val screenScaleState = ScreenScaleState()
     private val pageChangeFlow = MutableSharedFlow<Unit>(
@@ -129,6 +131,7 @@ class ReaderViewModel(
         readerImageFactory = readerImageFactory,
         pageChangeFlow = pageChangeFlow,
         screenScaleState = screenScaleState,
+        balloonIndexStore = balloonIndexStore,
     )
 
     suspend fun initialize(bookId: KomgaBookId) {

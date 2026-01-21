@@ -84,8 +84,13 @@ fun BoxScope.PagedReaderContent(
     
     // Trigger balloon detection when page changes
     BalloonDetectionEffect(
-        pagedReaderState = pagedReaderState,
-        currentPageImage = currentPageImage
+        balloonsState = pagedReaderState.balloonsState,
+        readingDirection = when (readingDirection) {
+            LEFT_TO_RIGHT -> ReadingDirection.LTR
+            RIGHT_TO_LEFT -> ReadingDirection.RTL
+        },
+        currentPageImage = currentPageImage,
+        preDetected = null
     )
 
     val coroutineScope = rememberCoroutineScope()
@@ -122,6 +127,14 @@ fun BoxScope.PagedReaderContent(
                 return@ReaderControlsOverlay true
             }
             hasBalloons
+        },
+        onLongPress = { offset ->
+            if (!balloonsEnabled || balloonsDetecting) {
+                return@ReaderControlsOverlay false
+            }
+            val hitBalloon = balloonsState.findBalloonAt(offset) ?: return@ReaderControlsOverlay false
+            balloonsState.selectBalloon(hitBalloon)
+            true
         },
         isSettingsMenuOpen = showSettingsMenu,
         onSettingsMenuToggle = { onShowSettingsMenuChange(!showSettingsMenu) },

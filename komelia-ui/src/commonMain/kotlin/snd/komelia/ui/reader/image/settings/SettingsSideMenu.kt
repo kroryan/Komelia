@@ -369,6 +369,14 @@ private fun ColumnScope.ContinuousReaderSettingsContent(state: ContinuousReaderS
             modifier = Modifier.weight(1f).padding(end = 10.dp)
         )
     }
+    val balloonsEnabled = state.balloonsState.balloonsEnabled.collectAsState().value
+    SwitchWithLabel(
+        checked = balloonsEnabled,
+        onCheckedChange = { state.balloonsState.setBalloonsEnabled(it) },
+        label = { Text("Smart mode") },
+        supportingText = { Text("Navigate through detected speech balloons") },
+        contentPadding = PaddingValues(horizontal = 10.dp)
+    )
     Spacer(Modifier.height(10.dp))
 }
 
@@ -425,12 +433,12 @@ private fun ColumnScope.PagedReaderSettingsContent(
             )
         }
         
-        // Balloon detection toggle
+        // Smart mode toggle
         val balloonsEnabled = pageState.balloonsState.balloonsEnabled.collectAsState().value
         SwitchWithLabel(
             checked = balloonsEnabled,
             onCheckedChange = { pageState.balloonsState.setBalloonsEnabled(it) },
-            label = { Text("Speech Balloon Detection") },
+            label = { Text("Smart mode") },
             supportingText = { Text("Navigate through detected speech balloons") },
             contentPadding = PaddingValues(horizontal = 10.dp)
         )

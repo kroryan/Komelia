@@ -227,6 +227,44 @@ class BalloonsState(
             _currentBalloon.value = null
         }
     }
+
+    /**
+     * Find a balloon under a screen tap using the page display layout.
+     * Returns null if layout is unavailable or no balloon matches.
+     */
+    fun findBalloonAt(tapOffset: Offset): Balloon? {
+        val displaySize = _pageDisplaySize.value
+        val displayOffset = _pageDisplayOffset.value
+        if (displaySize == IntSize.Zero || _balloons.value.isEmpty()) return null
+
+        val localX = tapOffset.x - displayOffset.x
+        val localY = tapOffset.y - displayOffset.y
+        if (localX < 0f || localY < 0f) return null
+        if (localX > displaySize.width || localY > displaySize.height) return null
+
+        val normX = (localX / displaySize.width).coerceIn(0f, 1f)
+        val normY = (localY / displaySize.height).coerceIn(0f, 1f)
+
+        return _balloons.value.firstOrNull { balloon ->
+            val rect = balloon.normalizedRect
+            normX >= rect.left && normX <= rect.right && normY >= rect.top && normY <= rect.bottom
+        }
+    }
+
+    /**
+     * Show a specific balloon by reference.
+     */
+    fun selectBalloon(balloon: Balloon) {
+        val index = _balloons.value.indexOfFirst { it.index == balloon.index }
+        if (index == -1) return
+        scope.launch {
+            if (_overlayVisible.value) {
+                hideOverlayWithAnimation()
+            }
+            _currentBalloonIndex.value = index
+            showBalloon(balloon)
+        }
+    }
     
     private fun showBalloon(balloon: Balloon) {
         _currentBalloon.value = balloon
