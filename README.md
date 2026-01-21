@@ -1,15 +1,17 @@
 # Komelia - Komga media client (Smart Reader Fork)
 
-> **⚠️ WORK IN PROGRESS - Speech Balloon Detection System**
+> **WORK IN PROGRESS - Speech Balloon Detection System**
 >
-> This is a fork of Komelia that aims to implement an automatic speech balloon detection and navigation system, inspired by [Seeneva](https://github.com/AubakirovDaniar/seeneva-reader-android).
+> This is a fork of Komelia that implements an automatic speech balloon detection and navigation system inspired by
+> [Seeneva](https://github.com/AubakirovDaniar/seeneva-reader-android). Full credit to the Seeneva project for the
+> reference behavior, UX, and ML model approach that guided this implementation.
 >
-> ## Current Status: NOT READY FOR USE
+> ## Current Status: BASIC PREVIEW
 >
-> The balloon detection feature is currently under development and has known issues:
-> - Detection may be inaccurate or produce false positives
-> - Zoom/scaling may not work correctly
-> - Performance issues may occur
+> Balloon navigation is usable, but only in a limited configuration:
+> - Reader mode: Paged only
+> - Scaling: Screen Fit only
+> - Other reader modes and scale modes are not wired yet
 >
 > ### Goal
 > Implement a Seeneva-style speech balloon reader that:
@@ -17,6 +19,17 @@
 > 2. Allows navigation through balloons with tap gestures (left/right)
 > 3. Shows zoomed balloons as centered popups with proportional scaling
 > 4. Supports both manga (RTL) and western comics (LTR) reading directions
+
+> ### Implementation Notes
+> The current flow mirrors Seeneva's behavior: each page is processed by a lightweight ML model, detections are stored
+> per page, and taps navigate between balloons before allowing page turns. The overlay computes proportional zoom and
+> positions each balloon over its on-page location, rather than centering everything.
+>
+> ### Work Remaining
+> - Integrate balloon navigation with other reader modes (Continuous, Webtoon, etc.)
+> - Support additional scale modes beyond Screen Fit (e.g., Fit Width, Free Scale)
+> - Expand testing for edge cases (small balloons, overlapping bubbles, multi-panel pages)
+> - Performance tuning and optional caching for large chapters
 >
 > ### Implementation Files
 > - `komelia-ui/src/androidMain/kotlin/snd/komelia/ui/reader/balloon/` - Android TFLite detection
