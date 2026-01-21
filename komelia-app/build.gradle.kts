@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.extraProperties
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -93,6 +94,14 @@ val androidVariant = runCatching {
     )
 }.getOrDefault(AndroidVariant.STANDALONE)
 
+val localProps = Properties().apply {
+    val propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) {
+        propsFile.inputStream().use { load(it) }
+    }
+}
+val keystorePath = localProps.getProperty("KOMELIA_KEYSTORE")?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "io.github.snd_r.komelia"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -139,6 +148,16 @@ android {
             includeInBundle = false
         }
     }
+    signingConfigs {
+        create("release") {
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = localProps.getProperty("KOMELIA_KEYSTORE_PASSWORD")
+                keyAlias = localProps.getProperty("KOMELIA_KEY_ALIAS")
+                keyPassword = localProps.getProperty("KOMELIA_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -147,6 +166,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "android.pro"
             )
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

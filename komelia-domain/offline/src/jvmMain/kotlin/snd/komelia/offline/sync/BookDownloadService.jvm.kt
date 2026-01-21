@@ -18,16 +18,16 @@ internal actual suspend fun prepareOutput(
 
     val filePath = when (DesktopPlatform.Current) {
         DesktopPlatform.Windows -> downloadRoot.file.toPath()
-            .resolve(serverName.removeIllegalWindowsPathChars())
-            .resolve(libraryName.removeIllegalWindowsPathChars())
-            .resolve(seriesName.removeIllegalWindowsPathChars())
-            .resolve(bookFileName.removeIllegalWindowsPathChars())
+            .resolve(serverName.removeIllegalWindowsPathChars("server"))
+            .resolve(libraryName.removeIllegalWindowsPathChars("library"))
+            .resolve(seriesName.removeIllegalWindowsPathChars("series"))
+            .resolve(bookFileName.removeIllegalWindowsPathChars("book"))
 
         else -> downloadRoot.file.toPath()
-            .resolve(serverName)
-            .resolve(libraryName)
-            .resolve(seriesName)
-            .resolve(bookFileName)
+            .resolve(serverName.sanitizePathSegment("server"))
+            .resolve(libraryName.sanitizePathSegment("library"))
+            .resolve(seriesName.sanitizePathSegment("series"))
+            .resolve(bookFileName.sanitizePathSegment("book"))
     }
 
     filePath.parent.createDirectories()
@@ -38,8 +38,15 @@ internal actual suspend fun prepareOutput(
 
 
 private val windowsReservedChars = "[<>:\"/|?*\u0000-\u001F]|[. ]$".toRegex()
-private fun String.removeIllegalWindowsPathChars(): String {
-    return this.replace(windowsReservedChars, "")
+private fun String.removeIllegalWindowsPathChars(fallback: String): String {
+    val cleaned = this.replace(windowsReservedChars, "").trim()
+    return cleaned.ifEmpty { fallback }
+}
+
+private val invalidPathChars = "[\\\\/:*?\"<>|]".toRegex()
+private fun String.sanitizePathSegment(fallback: String): String {
+    val trimmed = trim().replace(invalidPathChars, "_").replace(Regex("\\s+"), " ")
+    return trimmed.ifEmpty { fallback }
 }
 
 

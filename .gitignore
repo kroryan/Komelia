@@ -16,3 +16,4 @@ build/
 /output
 /.kotlin
 /cmake/build*
+/keystore

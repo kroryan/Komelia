@@ -118,10 +118,19 @@ fun BoxScope.BalloonOverlay(
 
                     val pageWidth = pageSize.width.toFloat().coerceAtLeast(1f)
                     val pageHeight = pageSize.height.toFloat().coerceAtLeast(1f)
-                    val displayWidth = pageDisplaySize.width.toFloat().coerceAtLeast(1f)
-                    val displayHeight = pageDisplaySize.height.toFloat().coerceAtLeast(1f)
-                    val centerX = pageDisplayOffset.x + (balloon.rect.center.x / pageWidth) * displayWidth
-                    val centerY = pageDisplayOffset.y + (balloon.rect.center.y / pageHeight) * displayHeight
+                    val displayWidth = pageDisplaySize.width.toFloat()
+                    val displayHeight = pageDisplaySize.height.toFloat()
+                    val hasDisplayLayout = displayWidth > 1f && displayHeight > 1f
+                    val centerX = if (hasDisplayLayout) {
+                        pageDisplayOffset.x + (balloon.rect.center.x / pageWidth) * displayWidth
+                    } else {
+                        screenWidthPx / 2f
+                    }
+                    val centerY = if (hasDisplayLayout) {
+                        pageDisplayOffset.y + (balloon.rect.center.y / pageHeight) * displayHeight
+                    } else {
+                        screenHeightPx / 2f
+                    }
 
                     val marginPx = with(density) { 8.dp.toPx() }
                     val maxLeft = screenWidthPx - targetWidth - marginPx

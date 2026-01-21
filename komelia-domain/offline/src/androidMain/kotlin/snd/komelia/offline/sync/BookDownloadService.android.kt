@@ -53,10 +53,15 @@ private fun prepareFileSink(
     seriesName: String,
     bookFileName: String,
 ): Pair<PlatformFile, Sink> {
-    val seriesDirectory = Path(rootPath, serverName, libraryName, seriesName)
+    val seriesDirectory = Path(
+        rootPath,
+        serverName.sanitizePathSegment("server"),
+        libraryName.sanitizePathSegment("library"),
+        seriesName.sanitizePathSegment("series")
+    )
     SystemFileSystem.createDirectories(seriesDirectory, mustCreate = false)
 
-    val bookFile = Path(seriesDirectory, bookFileName)
+    val bookFile = Path(seriesDirectory, bookFileName.sanitizePathSegment("book"))
     return PlatformFile(bookFile) to SystemFileSystem.sink(bookFile).buffered()
 }
 
@@ -74,14 +79,15 @@ private suspend fun prepareSAFSink(
 
     val bookFile = fileCreateMutex.withLock {
         val seriesDirectory = tree
-            .createSafDirectoryOrThrow(serverName)
-            .createSafDirectoryOrThrow(libraryName)
-            .createSafDirectoryOrThrow(seriesName)
+            .createSafDirectoryOrThrow(serverName.sanitizePathSegment("server"))
+            .createSafDirectoryOrThrow(libraryName.sanitizePathSegment("library"))
+            .createSafDirectoryOrThrow(seriesName.sanitizePathSegment("series"))
 
-        val existingBookFile = seriesDirectory.listFiles().firstOrNull { it.isFile && it.name == bookFileName }
+        val safeBookName = bookFileName.sanitizePathSegment("book")
+        val existingBookFile = seriesDirectory.listFiles().firstOrNull { it.isFile && it.name == safeBookName }
         existingBookFile?.delete()
 
-        seriesDirectory.createFile("application/octet-stream", bookFileName)
+        seriesDirectory.createFile("application/octet-stream", safeBookName)
             ?: error("Can't create file in directory $seriesDirectory")
     }
 
@@ -96,4 +102,10 @@ private fun DocumentFile.createSafDirectoryOrThrow(directoryName: String): Docum
     return this.listFiles().firstOrNull { it.isDirectory && it.name == directoryName }
         ?: this.createDirectory(directoryName)
         ?: error("Can't create subdirectory in ${this.uri}")
+}
+
+private val invalidPathChars = "[\\\\/:*?\"<>|]".toRegex()
+private fun String.sanitizePathSegment(fallback: String): String {
+    val trimmed = trim().replace(invalidPathChars, "_").replace(Regex("\\s+"), " ")
+    return trimmed.ifEmpty { fallback }
 }
