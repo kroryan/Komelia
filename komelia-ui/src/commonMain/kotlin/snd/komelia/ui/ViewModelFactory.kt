@@ -147,7 +147,7 @@ class ViewModelFactory(
 
     fun getFilterEditViewModel(homeFilters: List<HomeFilterData>?): FilterEditViewModel {
         return FilterEditViewModel(
-            homeFilters = homeFilters,
+            initialFilters = homeFilters,
             appNotifications = dependencies.appNotifications,
             seriesApi = komgaApi.seriesApi,
             bookApi = komgaApi.bookApi,
@@ -263,15 +263,17 @@ class ViewModelFactory(
 
     fun getLoginViewModel(): LoginViewModel {
         return LoginViewModel(
-            isOffline = dependencies.isOffline,
             settingsRepository = appRepositories.settingsRepository,
             secretsRepository = appRepositories.secretsRepository,
             komgaUserApi = dependencies.komgaApi.map { it.userApi },
             komgaLibraryApi = dependencies.komgaApi.map { it.libraryApi },
             komgaAuthState = dependencies.komgaSharedState,
             notifications = dependencies.appNotifications,
-            offlineUserRepository = dependencies.offlineDependencies.repositories.userRepository,
             platform = platformType,
+            offlineUserRepository = dependencies.offlineDependencies.repositories.userRepository,
+            offlineServerRepository = dependencies.offlineDependencies.repositories.mediaServerRepository,
+            offlineSettingsRepository = dependencies.offlineDependencies.repositories.offlineSettingsRepository,
+            offlineLibraryApi = dependencies.offlineDependencies.komgaApi.libraryApi,
         )
     }
 
@@ -604,7 +606,6 @@ class ViewModelFactory(
             bookApi = komgaApi.bookApi,
             seriesApi = komgaApi.seriesApi,
             readListApi = komgaApi.readListApi,
-//            ktor = TODO(),
             settingsRepository = appRepositories.settingsRepository,
             epubSettingsRepository = appRepositories.epubReaderSettingsRepository,
             fontsRepository = appRepositories.fontsRepository,
@@ -635,9 +636,10 @@ class ViewModelFactory(
     }
 
     fun getSeriesBulkActions() = SeriesBulkActions(
-        komgaApi.seriesApi,
-        dependencies.offlineDependencies.taskEmitter,
-        dependencies.appNotifications,
+        seriesApi = komgaApi.seriesApi,
+        komfClient = dependencies.komfClientFactory.metadataClient(KOMGA),
+        taskEmitter = dependencies.offlineDependencies.taskEmitter,
+        notifications = dependencies.appNotifications,
     )
 
     fun getCollectionBulkActions() = CollectionBulkActions(
